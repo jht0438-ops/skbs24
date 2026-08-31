@@ -1,0 +1,788 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+st.set_page_config(
+    page_title="SK바이오사이언스 L HOUSE 원가관리 분석",
+    page_icon="📊",
+    layout="wide",
+)
+
+# -----------------------------
+# Style
+# -----------------------------
+st.markdown(
+    """
+    <style>
+    .main-title {font-size: 2.1rem; font-weight: 800; margin-bottom: 0.2rem;}
+    .sub-title {color: #667085; margin-bottom: 1.4rem;}
+    .section-title {font-size: 1.3rem; font-weight: 750; margin-top: 1.2rem; margin-bottom: 0.6rem;}
+    .logic-box {
+        border: 1px solid #d9e0e8; border-radius: 12px; padding: 18px 20px;
+        background: #fafbfd; margin-bottom: 16px;
+    }
+    .framework {
+        border-left: 4px solid #68778a; padding: 14px 18px;
+        background: #f7f9fb; border-radius: 6px; line-height: 1.7;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown('<div class="main-title">SK바이오사이언스 L HOUSE 원가관리 분석</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-title">Management Accounting 관점 · 계획 → 실적 → 차이 → 원인 → 개선/의사결정</div>',
+    unsafe_allow_html=True,
+)
+
+# -----------------------------
+# Data
+# -----------------------------
+production = pd.DataFrame(
+    {
+        "기간": ["2023", "2024", "2025", "2026 상반기"],
+        "생산능력(batch)": [481, 572, 575, 320],
+        "생산실적(batch)": [269, 215, 201, 137],
+        "가동률(%)": [55.9, 37.6, 35.0, 42.8],
+        "자료기준": ["연간", "연간", "연간", "상반기"],
+    }
+)
+
+
+future_investment = pd.DataFrame(
+    {
+        "투자항목": ["백신 포트폴리오 확장", "R&D/제조 인프라 개선", "SKYShield", "팬데믹 대응", "New Bio"],
+        "2026 상반기 투자금액(억원)": [333, 235, 19, 8, 14],
+    }
+)
+
+rd_2q26 = pd.DataFrame(
+    {
+        "구분": ["연구비 총액", "외부지원금 등", "판관비 반영 연구비"],
+        "2Q26(억원)": [647, 485, 162],
+    }
+)
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def section(title):
+    st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
+
+def tab_intro(title, what, why, connection, method, limitation):
+    st.markdown(
+        f"""
+        <div class="logic-box">
+        <b>{title}</b><br><br>
+        <b>① 무엇을 분석하는가</b><br>{what}<br><br>
+        <b>② 왜 분석하는가</b><br>{why}<br><br>
+        <b>③ Management Accounting과의 연결</b><br>{connection}<br><br>
+        <b>④ 분석 방법</b><br>{method}<br><br>
+        <b>⑤ 공개자료의 한계</b><br>{limitation}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def parse_optional_number(label, key, placeholder="숫자를 입력하세요"):
+    raw = st.text_input(label, value="", placeholder=placeholder, key=key)
+    if raw.strip() == "":
+        return None
+    try:
+        return float(raw.replace(",", "").strip())
+    except ValueError:
+        st.warning(f"{label}: 숫자만 입력해 주세요.")
+        return None
+
+
+def format_value(value, unit):
+    if value is None:
+        return "미입력"
+    if unit == "%":
+        return f"{value:,.1f}%"
+    return f"{value:,.2f} {unit}" if unit else f"{value:,.2f}"
+
+
+def calc_plan_actual(plan, actual, unit, percentage_point=False):
+    if plan is None or actual is None:
+        return "계산 대기", "계산 대기"
+
+    diff = actual - plan
+
+    if percentage_point:
+        diff_text = f"{diff:+,.1f}%p"
+    else:
+        diff_text = f"{diff:+,.2f} {unit}" if unit else f"{diff:+,.2f}"
+
+    if plan == 0:
+        rate_text = "계획값 0으로 증감률 계산 불가"
+    else:
+        rate = (actual - plan) / plan * 100
+        rate_text = f"{rate:+,.1f}%"
+
+    return diff_text, rate_text
+
+
+def variance_label(value):
+    if value > 0:
+        return "불리(U)"
+    elif value < 0:
+        return "유리(F)"
+    return "차이 없음"
+
+def biggest_driver(df):
+    if df.empty or df["차이금액"].abs().max() == 0:
+        return "현재 입력값에서는 원가차이가 발생하지 않았습니다."
+    temp = df.copy()
+    idx = temp["차이금액"].abs().idxmax()
+    row = temp.loc[idx]
+    direction = "불리한" if row["차이금액"] > 0 else "유리한"
+    return f"가장 큰 차이는 **{row['차이항목']}**이며, {abs(row['차이금액']):,.0f}원의 **{direction} 차이**입니다."
+
+# -----------------------------
+# Tabs: 최종 5개
+# -----------------------------
+tabs = st.tabs(
+    [
+        "1. 개요",
+        "2. 생산·원가 분석",
+        "3. 계획 대비 실적",
+        "4. 연구개발 투자현황",
+        "5. 원가차이 분석",
+        "6. 프로젝트 최종결론",
+    ]
+)
+
+# =========================================================
+# 1. 개요
+# =========================================================
+with tabs[0]:
+    st.subheader("프로젝트 목적")
+
+    st.markdown(
+        """
+        이 프로젝트는 SK바이오사이언스 안동 L HOUSE의 **Management Accounting 직무**를
+        공개자료를 바탕으로 구조화한 프로젝트입니다.
+
+        핵심은 단순히 원가를 집계하는 것이 아니라
+        **「얼마가 발생했는가를 넘어 왜 발생했는가를 설명하는 것」**입니다.
+        """
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.info("생산·원가 분석")
+    c2.info("계획 대비 실적 관리")
+    c3.info("연구개발 투자·원가차이 분석")
+
+    section("핵심 관리 논리")
+    st.markdown(
+        """
+        <div class="framework">
+        계획 → 실적 → 차이 → 원인 → 개선 및 다음 계획 반영
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    section("데이터 원칙")
+    st.warning(
+        "공개되지 않은 숫자는 임의로 추정하지 않습니다. L HOUSE 총 제조원가, 단위당 제조원가, "
+        "연구과제별 제조비, 계획원가는 공개자료에서 확인되지 않으면 N/A로 표시합니다."
+    )
+    st.markdown(
+        """
+        - SK바이오사이언스 매출원가를 L HOUSE 제조원가로 사용하지 않습니다.
+        - 2026 상반기 R&D/제조 인프라 개선 235억원을 L HOUSE 제조원가로 해석하지 않습니다.
+        - 백신 포트폴리오 확장 333억원은 **투자금액**이며 연구과제 실제 제조비가 아닙니다.
+        - 333억원을 개별 파이프라인의 제조비로 임의 배분하지 않습니다.
+        - 4번 탭의 원가차이 분석값은 사용자 입력값이며 SK바이오사이언스 실제 수치가 아닙니다.
+        """
+    )
+
+# =========================================================
+# 2. 생산·원가 분석
+# =========================================================
+with tabs[1]:
+    tab_intro(
+        "생산·원가 분석 | 분석 목적과 방법",
+        "L HOUSE의 생산능력, 생산실적, 가동률을 통해 생산활동 수준을 확인합니다.",
+        "제조원가를 해석하려면 생산량과 설비 활용 수준을 함께 볼 필요가 있기 때문입니다.",
+        "Management Accounting은 회계 숫자뿐 아니라 생산활동 데이터를 연결해 원가 변동의 원인을 설명합니다.",
+        "2023~2025 연간 자료와 2026 상반기 자료를 함께 표시하되 기간 차이를 명확히 표시합니다.",
+        "가동률 상승을 제조원가 감소라고 단정하지 않습니다. 실제 원가 분석에는 내부 원가자료가 추가로 필요합니다.",
+    )
+
+    section("L HOUSE 생산 데이터")
+    st.dataframe(production, use_container_width=True, hide_index=True)
+
+    st.warning(
+        "2023~2025는 연간 자료이고 2026은 상반기 자료입니다. "
+        "따라서 생산능력·생산실적을 단순 증감률로 비교하지 않습니다."
+    )
+
+    section("가동률 추이")
+    fig = px.line(
+        production,
+        x="기간",
+        y="가동률(%)",
+        markers=True,
+        text="가동률(%)",
+        title="L HOUSE 가동률 추이",
+    )
+    fig.update_traces(textposition="top center")
+    fig.update_layout(xaxis_title="", yaxis_title="가동률(%)")
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("2026 상반기 가동률 42.8% 포함")
+
+    section("Management Accounting 관점")
+    st.markdown(
+        """
+        가동률은 제조원가의 직접적인 결과값이 아니라 **원가 변동을 설명하기 위한 비재무적 지표**입니다.
+        다른 조건이 동일하다면 생산량 증가로 고정제조간접원가의 단위당 부담이 감소할 가능성은 있지만,
+        실제 제조원가 감소 여부는 직접재료원가·직접노무원가·제조간접원가를 함께 확인해야 합니다.
+        """
+    )
+
+    with st.expander("총 제조원가 개념"):
+        st.markdown(
+            """
+            **당기총제조원가 = 직접재료원가 + 직접노무원가 + 제조간접원가**
+
+            화면에서는 이를 **「총 제조원가」**라고 표시합니다.
+
+            **당기제품제조원가 = 기초재공품 + 당기총제조원가 - 기말재공품**
+
+            따라서 당기총제조원가는 당기제품제조원가 또는 매출원가와 동일한 개념이 아닙니다.
+            """
+        )
+
+# =========================================================
+# 3. 계획 대비 실적
+# =========================================================
+with tabs[2]:
+    tab_intro(
+        "계획 대비 실적 | 분석 목적과 방법",
+        "L HOUSE의 계획값과 실제값을 같은 기준으로 입력·비교하고, 계획 대비 실적 차이를 자동 계산합니다.",
+        "Management Accounting의 핵심은 실제 실적을 확인하는 데 그치지 않고 계획과 얼마나 차이가 발생했는지 파악하는 것이기 때문입니다.",
+        "계획값을 입력하면 공개된 실제값과 자동 비교하고, 공개되지 않은 실제값도 추후 확인할 경우 직접 입력하여 차이와 증감률을 계산할 수 있습니다.",
+        "생산능력·생산실적·가동률은 공개된 2026 상반기 실제값을 고정해 사용하고, 공개되지 않은 계획값은 사용자 입력을 받습니다. 총 제조원가·단위당 제조원가는 계획과 실제 모두 입력할 수 있도록 구성합니다.",
+        "입력 전에는 '미입력'으로 표시하며 공개되지 않은 숫자를 임의로 채우지 않습니다. 사용자가 입력한 값은 사내자료 등 추가 확인을 통해 확보한 값이라는 전제에서 분석합니다.",
+    )
+
+    section("L HOUSE 계획값 입력")
+    st.info(
+        "공개자료에서 확인되지 않았던 값은 빈칸으로 두었습니다. "
+        "추후 계획값이나 실제 제조원가를 알게 되면 직접 입력하세요. "
+        "입력 즉시 아래 표에서 계획 대비 실제 차이와 증감률이 자동 계산됩니다."
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        plan_capacity = parse_optional_number(
+            "계획 생산능력 (batch)",
+            key="plan_capacity",
+            placeholder="예: 330"
+        )
+        plan_output = parse_optional_number(
+            "계획 생산실적 (batch)",
+            key="plan_output",
+            placeholder="예: 150"
+        )
+
+    with c2:
+        plan_utilization = parse_optional_number(
+            "계획 가동률 (%)",
+            key="plan_utilization",
+            placeholder="예: 45.0"
+        )
+        plan_total_cost = parse_optional_number(
+            "계획 총 제조원가 (억원)",
+            key="plan_total_cost",
+            placeholder="예: 500"
+        )
+
+    with c3:
+        actual_total_cost = parse_optional_number(
+            "실제 총 제조원가 (억원)",
+            key="actual_total_cost",
+            placeholder="확인 후 입력"
+        )
+        plan_unit_cost = parse_optional_number(
+            "계획 단위당 제조원가 (원/batch)",
+            key="plan_unit_cost",
+            placeholder="확인 후 입력"
+        )
+        actual_unit_cost = parse_optional_number(
+            "실제 단위당 제조원가 (원/batch)",
+            key="actual_unit_cost",
+            placeholder="확인 후 입력"
+        )
+
+    # 공개자료에서 확인되는 2026 상반기 실제값
+    actual_capacity = 320.0
+    actual_output = 137.0
+    actual_utilization = 42.8
+
+    cap_diff, cap_rate = calc_plan_actual(plan_capacity, actual_capacity, "batch")
+    out_diff, out_rate = calc_plan_actual(plan_output, actual_output, "batch")
+    util_diff, util_rate = calc_plan_actual(
+        plan_utilization,
+        actual_utilization,
+        "%",
+        percentage_point=True
+    )
+    total_cost_diff, total_cost_rate = calc_plan_actual(
+        plan_total_cost,
+        actual_total_cost,
+        "억원"
+    )
+    unit_cost_diff, unit_cost_rate = calc_plan_actual(
+        plan_unit_cost,
+        actual_unit_cost,
+        "원/batch"
+    )
+
+    section("계획 대비 실제 자동 비교")
+
+    comparison_df = pd.DataFrame(
+        {
+            "관리항목": [
+                "생산능력",
+                "생산실적",
+                "가동률",
+                "총 제조원가",
+                "단위당 제조원가",
+            ],
+            "계획": [
+                format_value(plan_capacity, "batch"),
+                format_value(plan_output, "batch"),
+                format_value(plan_utilization, "%"),
+                format_value(plan_total_cost, "억원"),
+                format_value(plan_unit_cost, "원/batch"),
+            ],
+            "실제": [
+                "320 batch",
+                "137 batch",
+                "42.8%",
+                format_value(actual_total_cost, "억원"),
+                format_value(actual_unit_cost, "원/batch"),
+            ],
+            "차이(실제-계획)": [
+                cap_diff,
+                out_diff,
+                util_diff,
+                total_cost_diff,
+                unit_cost_diff,
+            ],
+            "증감률": [
+                cap_rate,
+                out_rate,
+                util_rate,
+                total_cost_rate,
+                unit_cost_rate,
+            ],
+            "값의 성격": [
+                "실제값: 공개자료",
+                "실제값: 공개자료",
+                "실제값: 공개자료",
+                "계획·실제: 사용자 입력",
+                "계획·실제: 사용자 입력",
+            ],
+        }
+    )
+
+    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+
+    st.caption(
+        "가동률 차이는 %p로 표시합니다. 증감률은 (실제 - 계획) ÷ 계획 × 100으로 계산합니다. "
+        "총 제조원가와 단위당 제조원가는 입력 전까지 계산하지 않습니다."
+    )
+
+    section("차이 해석")
+    available_diffs = []
+
+    if plan_capacity is not None:
+        available_diffs.append(("생산능력", actual_capacity - plan_capacity, "batch"))
+    if plan_output is not None:
+        available_diffs.append(("생산실적", actual_output - plan_output, "batch"))
+    if plan_utilization is not None:
+        available_diffs.append(("가동률", actual_utilization - plan_utilization, "%p"))
+    if plan_total_cost is not None and actual_total_cost is not None:
+        available_diffs.append(("총 제조원가", actual_total_cost - plan_total_cost, "억원"))
+    if plan_unit_cost is not None and actual_unit_cost is not None:
+        available_diffs.append(("단위당 제조원가", actual_unit_cost - plan_unit_cost, "원/batch"))
+
+    if not available_diffs:
+        st.info("계획값 또는 추가 실제값을 입력하면 차이 해석이 자동으로 표시됩니다.")
+    else:
+        for item, diff, unit in available_diffs:
+            if abs(diff) < 1e-12:
+                st.write(f"- **{item}**: 계획과 실제가 동일합니다.")
+            elif diff > 0:
+                st.write(f"- **{item}**: 실제가 계획보다 {abs(diff):,.2f}{unit} 높습니다.")
+            else:
+                st.write(f"- **{item}**: 실제가 계획보다 {abs(diff):,.2f}{unit} 낮습니다.")
+
+    st.caption(
+        "차이의 크기만으로 유리·불리를 단정하지 않습니다. 생산능력·생산실적·가동률의 증가는 원가 감소를 의미하지 않으며, "
+        "총 제조원가·단위당 제조원가의 차이가 확인되면 5번 '원가차이 분석' 탭에서 세부 원가요소별 원인을 분석합니다."
+    )
+
+    section("내부 데이터가 있을 경우의 분석 흐름")
+    st.markdown(
+        """
+        <div class="framework">
+        계획값 입력 → 실제값 확인/입력 → 차이 자동계산
+        → 직접재료원가 / 직접노무원가 / 제조간접원가
+        → 원가차이 분석 → 원인 파악 → 개선 및 다음 계획 반영
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# =========================================================
+# 4. 연구개발 투자현황
+# =========================================================
+with tabs[3]:
+    tab_intro(
+        "연구개발 투자현황 | 분석 목적과 방법",
+        "SK바이오사이언스의 공개자료에서 확인되는 연구개발 및 미래성장 투자현황을 정리합니다.",
+        "회사가 어떤 백신 파이프라인과 연구개발 인프라에 자원을 투입하고 있는지 파악하기 위한 영역입니다.",
+        "Management Accounting 관점에서는 투자 방향을 이해하되, 투자금액과 제조원가를 구분하는 것이 중요합니다.",
+        "2026 상반기 미래성장 투자항목과 2Q26 연구비/R&D 비용을 공개자료 기준으로 구분해 제시합니다.",
+        "333억원·235억원 등의 투자금액은 L HOUSE 제조원가 또는 개별 연구과제 제조비가 아니며, 공개되지 않은 세부 금액을 임의 배분하지 않습니다.",
+    )
+
+    # A. 공개 투자현황
+    section("공개자료로 확인 가능한 R&D/미래성장 투자 현황")
+    st.dataframe(future_investment, use_container_width=True, hide_index=True)
+    st.info(
+        "2026 상반기 미래성장 투자금액 합계는 609억원입니다. "
+        "이는 회사의 투자현황이며 L HOUSE 제조원가 또는 연구과제 실제 제조비와 동일한 개념이 아닙니다."
+    )
+
+    with st.expander("백신 포트폴리오 확장 · 333억원"):
+        st.markdown(
+            """
+            **주요 추진내용**
+            - PCV21(GBP410): Sanofi 공동개발, 글로벌 임상 3상 및 상업화 준비
+            - 범용 코로나 백신: 글로벌 임상 1/2상
+            - 주사형 로타바이러스 백신: 미국 CDC 기술도입 및 공정개발
+            - RSV 예방항체: Gates MRI 관련 개발
+            - 차세대 에볼라 백신: CEPI 지원 글로벌 협력
+            - 차세대 독감 백신: IDT·Vaxxas 등과 협력
+
+            **해석**
+            - 333억원은 백신 포트폴리오 확장 관련 **2026 상반기 투자금액**입니다.
+            - 연구과제 실제 제조비로 사용하지 않습니다.
+
+            **공개자료 한계**
+            - 개별 파이프라인별 투자금액과 제조비는 공개되지 않았습니다.
+            - 333억원을 각 백신에 임의 배분하지 않습니다.
+            """
+        )
+
+    with st.expander("R&D/제조 인프라 개선 · 235억원"):
+        st.markdown(
+            """
+            **주요 추진내용**
+            - 글로벌 R&PD 센터
+            - L HOUSE 생산시설 확장/고도화
+            - AI 기반 수율 개선
+            - cGMP 수준의 제조역량 고도화 등
+
+            **해석**
+            - 235억원은 R&D/제조 인프라 개선 관련 2026 상반기 투자금액입니다.
+
+            **공개자료 한계**
+            - 235억원을 L HOUSE 제조원가 또는 특정 연구과제 제조비로 해석하지 않습니다.
+            """
+        )
+
+    with st.expander("SKYShield · 19억원"):
+        st.markdown("공개자료에서 확인되는 2026 상반기 미래성장 투자 항목입니다. 세부 제조비는 공개자료 미확인입니다.")
+
+    with st.expander("팬데믹 대응 · 8억원"):
+        st.markdown("공개자료에서 확인되는 2026 상반기 미래성장 투자 항목입니다. 세부 제조비는 공개자료 미확인입니다.")
+
+    with st.expander("New Bio · 14억원"):
+        st.markdown("공개자료에서 확인되는 2026 상반기 미래성장 투자 항목입니다. 세부 제조비는 공개자료 미확인입니다.")
+
+    section("연구비/R&D 비용 | 2Q26")
+    st.dataframe(rd_2q26, use_container_width=True, hide_index=True)
+    st.metric(
+        "판관비 반영 연구비",
+        "162억원",
+        help=(
+            "연구비 총액 중 회사 공시상 '외부지원금 등'을 차감한 후 판매비와관리비에 반영된 연구비입니다. "
+            "'외부지원금 등'의 세부 구성은 공개자료만으로 모두 확인할 수 없으므로 전액을 순수 외부지원금으로 해석하지 않습니다."
+        ),
+    )
+
+    st.info(
+        "이 탭의 공개 투자금액은 연구개발·미래성장 투자현황을 보여주기 위한 자료입니다. "
+        "원가차이 분석은 다음 탭에서 별도의 사용자 입력형 분석 도구로 구성했습니다."
+    )
+
+# =========================================================
+# 5. 원가차이 분석
+# =========================================================
+with tabs[4]:
+    tab_intro(
+        "원가차이 분석 | 분석 목적과 방법",
+        "표준원가와 실제원가를 비교하여 직접재료원가·직접노무원가·제조간접원가에서 발생한 차이를 자동으로 계산합니다.",
+        "Management Accounting에서는 원가가 계획과 달라졌다는 결과에서 끝나지 않고 가격·임률·능률 등 어떤 요인에서 차이가 발생했는지 파악해야 하기 때문입니다.",
+        "직접재료원가는 가격차이와 능률차이, 직접노무원가는 임률차이와 능률차이, 제조간접원가는 변동·고정제조간접원가 차이로 구분해 분석합니다.",
+        "사용자가 표준값과 실제값을 입력하면 차이금액과 유리(F)·불리(U) 여부를 자동 계산하고 가장 큰 차이항목을 보여줍니다.",
+        "입력값은 분석 구조를 보여주기 위한 사용자 입력값이며 SK바이오사이언스 또는 특정 연구과제의 실제 수치가 아닙니다.",
+    )
+
+    section("원가차이 자동분석")
+
+    st.warning(
+        "아래 입력값은 분석 구조를 보여주기 위한 사용자 입력값입니다. "
+        "SK바이오사이언스 또는 특정 연구과제의 실제 수치가 아닙니다."
+    )
+
+    st.markdown(
+        """
+        <div class="framework">
+        표준원가 입력 → 실제원가 입력 → 원가차이 계산
+        → 직접재료원가 / 직접노무원가 / 제조간접원가별 차이 분해
+        → 가격·임률·능률 차이 확인 → 주요 원인 파악
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    dm_tab, dl_tab, moh_tab = st.tabs(["직접재료원가", "직접노무원가", "제조간접원가"])
+
+    # -------------------------
+    # 직접재료원가
+    # -------------------------
+    with dm_tab:
+        st.markdown("### 직접재료원가 차이분석")
+
+        basis = st.radio(
+            "가격차이 계산 기준",
+            ["실제사용량 기준", "실제구입량 기준"],
+            horizontal=True,
+        )
+
+        c1, c2 = st.columns(2)
+        with c1:
+            dm_aq_used = st.number_input("실제사용량(AQ 사용)", min_value=0.0, value=0.0, step=1.0)
+            dm_aq_purchased = st.number_input("실제구입량(AQ 구입)", min_value=0.0, value=0.0, step=1.0)
+            dm_ap = st.number_input("실제가격(AP, 원/단위)", min_value=0.0, value=0.0, step=100.0)
+        with c2:
+            dm_sq = st.number_input(
+                "표준허용량(SQ)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                help="실제 생산량에 허용되는 표준 재료투입량",
+            )
+            dm_sp = st.number_input("표준가격(SP, 원/단위)", min_value=0.0, value=0.0, step=100.0)
+
+        price_qty = dm_aq_used if basis == "실제사용량 기준" else dm_aq_purchased
+        dm_price_var = price_qty * (dm_ap - dm_sp)
+        dm_eff_var = dm_sp * (dm_aq_used - dm_sq)
+        dm_total_var = dm_aq_used * dm_ap - dm_sq * dm_sp
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("가격차이", f"{abs(dm_price_var):,.0f}원", variance_label(dm_price_var))
+        m2.metric("능률차이", f"{abs(dm_eff_var):,.0f}원", variance_label(dm_eff_var))
+        m3.metric("사용기준 총원가차이", f"{abs(dm_total_var):,.0f}원", variance_label(dm_total_var))
+
+        dm_result = pd.DataFrame(
+            {
+                "차이항목": ["직접재료 가격차이", "직접재료 능률차이"],
+                "차이금액": [dm_price_var, dm_eff_var],
+            }
+        )
+        st.info(biggest_driver(dm_result))
+
+        st.markdown(
+            """
+            **계산식**
+            - 가격차이 = 가격차이 기준수량 × (실제가격 - 표준가격)
+            - 능률차이 = 표준가격 × (실제사용량 - 표준허용량)
+            """
+        )
+
+        if basis == "실제구입량 기준" and dm_aq_purchased != dm_aq_used:
+            st.warning(
+                "가격차이를 실제구입량 기준으로 계산하면 실제구입량과 실제사용량이 다를 때 "
+                "가격차이 + 능률차이가 사용기준 총원가차이와 일치하지 않을 수 있습니다."
+            )
+
+    # -------------------------
+    # 직접노무원가
+    # -------------------------
+    with dl_tab:
+        st.markdown("### 직접노무원가 차이분석")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            dl_ah = st.number_input("실제작업시간(AH)", min_value=0.0, value=0.0, step=1.0)
+            dl_ar = st.number_input("실제임률(AR, 원/시간)", min_value=0.0, value=0.0, step=100.0)
+        with c2:
+            dl_sh = st.number_input(
+                "표준허용시간(SH)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                help="실제 생산량에 허용되는 표준 작업시간",
+            )
+            dl_sr = st.number_input("표준임률(SR, 원/시간)", min_value=0.0, value=0.0, step=100.0)
+
+        dl_rate_var = dl_ah * (dl_ar - dl_sr)
+        dl_eff_var = dl_sr * (dl_ah - dl_sh)
+        dl_total_var = dl_ah * dl_ar - dl_sh * dl_sr
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("임률차이", f"{abs(dl_rate_var):,.0f}원", variance_label(dl_rate_var))
+        m2.metric("능률차이", f"{abs(dl_eff_var):,.0f}원", variance_label(dl_eff_var))
+        m3.metric("총 직접노무원가 차이", f"{abs(dl_total_var):,.0f}원", variance_label(dl_total_var))
+
+        dl_result = pd.DataFrame(
+            {
+                "차이항목": ["직접노무 임률차이", "직접노무 능률차이"],
+                "차이금액": [dl_rate_var, dl_eff_var],
+            }
+        )
+        st.info(biggest_driver(dl_result))
+
+        st.markdown(
+            """
+            **계산식**
+            - 임률차이 = 실제작업시간 × (실제임률 - 표준임률)
+            - 능률차이 = 표준임률 × (실제작업시간 - 표준허용시간)
+            """
+        )
+
+    # -------------------------
+    # 제조간접원가
+    # -------------------------
+    with moh_tab:
+        st.markdown("### 제조간접원가 차이분석")
+        st.caption("변동제조간접원가와 고정제조간접원가는 차이분석 방식이 달라 구분해서 계산합니다.")
+
+        st.markdown("#### 1) 변동제조간접원가")
+        c1, c2 = st.columns(2)
+        with c1:
+            voh_ah = st.number_input("실제조업도(AH)", min_value=0.0, value=0.0, step=1.0)
+            voh_actual = st.number_input("실제 변동제조간접원가", min_value=0.0, value=0.0, step=1000.0)
+        with c2:
+            voh_sh = st.number_input("표준허용조업도(SH)", min_value=0.0, value=0.0, step=1.0)
+            voh_sr = st.number_input("표준 변동제조간접원가 배부율", min_value=0.0, value=0.0, step=100.0)
+
+        voh_spending = voh_actual - (voh_ah * voh_sr)
+        voh_eff = voh_sr * (voh_ah - voh_sh)
+
+        m1, m2 = st.columns(2)
+        m1.metric("소비차이", f"{abs(voh_spending):,.0f}원", variance_label(voh_spending))
+        m2.metric("능률차이", f"{abs(voh_eff):,.0f}원", variance_label(voh_eff))
+
+        st.markdown(
+            """
+            **계산식**
+            - 소비차이 = 실제 변동제조간접원가 - 실제조업도 × 표준배부율
+            - 능률차이 = 표준배부율 × (실제조업도 - 표준허용조업도)
+            """
+        )
+
+        st.markdown("#### 2) 고정제조간접원가")
+        c1, c2 = st.columns(2)
+        with c1:
+            foh_actual = st.number_input("실제 고정제조간접원가", min_value=0.0, value=0.0, step=1000.0)
+            foh_budget = st.number_input("예산 고정제조간접원가", min_value=0.0, value=0.0, step=1000.0)
+        with c2:
+            foh_denominator = st.number_input("기준조업도", min_value=0.0, value=0.0, step=1.0)
+            foh_sh = st.number_input("표준허용조업도", min_value=0.0, value=0.0, step=1.0, key="foh_sh")
+
+        foh_rate = foh_budget / foh_denominator if foh_denominator > 0 else 0.0
+        foh_applied = foh_sh * foh_rate
+        foh_budget_var = foh_actual - foh_budget
+        foh_volume_var = foh_budget - foh_applied
+
+        m1, m2 = st.columns(2)
+        m1.metric("예산차이", f"{abs(foh_budget_var):,.0f}원", variance_label(foh_budget_var))
+        m2.metric("조업도차이", f"{abs(foh_volume_var):,.0f}원", variance_label(foh_volume_var))
+
+        st.markdown(
+            """
+            **계산식**
+            - 표준배부율 = 예산 고정제조간접원가 ÷ 기준조업도
+            - 예산차이 = 실제 고정제조간접원가 - 예산 고정제조간접원가
+            - 조업도차이 = 예산 고정제조간접원가 - 배부 고정제조간접원가
+            """
+        )
+
+    # -------------------------
+    # 종합결과
+    # -------------------------
+    st.divider()
+    section("C. 원가차이 종합결과")
+
+    summary_df = pd.DataFrame(
+        {
+            "차이항목": [
+                "직접재료 가격차이",
+                "직접재료 능률차이",
+                "직접노무 임률차이",
+                "직접노무 능률차이",
+                "변동제조간접원가 소비차이",
+                "변동제조간접원가 능률차이",
+                "고정제조간접원가 예산차이",
+                "고정제조간접원가 조업도차이",
+            ],
+            "차이금액": [
+                dm_price_var,
+                dm_eff_var,
+                dl_rate_var,
+                dl_eff_var,
+                voh_spending,
+                voh_eff,
+                foh_budget_var,
+                foh_volume_var,
+            ],
+        }
+    )
+    summary_df["판정"] = summary_df["차이금액"].apply(variance_label)
+
+    display_df = summary_df.copy()
+    display_df["차이금액"] = display_df["차이금액"].map(lambda x: f"{abs(x):,.0f}원")
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    fig2 = px.bar(summary_df, x="차이항목", y="차이금액", title="세부 원가차이")
+    fig2.update_layout(xaxis_title="", yaxis_title="차이금액(원)")
+    st.plotly_chart(fig2, use_container_width=True)
+
+    st.info(biggest_driver(summary_df))
+    st.caption("양수(+)는 불리한 차이(U), 음수(-)는 유리한 차이(F)입니다.")
+
+# =========================================================
+# 6. 프로젝트 최종결론
+# =========================================================
+with tabs[5]:
+    st.subheader("프로젝트 최종결론")
+
+    st.markdown(
+        """
+        공개자료만으로 L HOUSE의 실제 총 제조원가나 연구과제별 제조비를 계산할 수는 없습니다.
+        따라서 공개되지 않은 숫자를 추정하는 대신, 공개자료에서 확인할 수 있는 생산·투자 현황과
+        실제 직무에서 활용 가능한 원가차이 분석 구조를 분리했습니다.
+
+        연구개발 투자현황에서는 333억원 등 미래성장 투자금액을 실제 제조비로 간주하지 않았습니다.
+        대신 사내 데이터가 제공된다는 가정 아래 직접재료원가·직접노무원가·제조간접원가의
+        표준값과 실제값을 입력해 가격차이·임률차이·능률차이 등을 자동 분석하도록 구성했습니다.
+
+        이를 통해 Management Accounting을
+        **「계획과 실제의 차이를 계산하고, 차이가 어떤 원가요소에서 발생했는지 파악해 다음 의사결정에 반영하는 업무」**
+        로 표현하고자 했습니다.
+        """
+    )
+
+    st.success("핵심: 계획 → 실적 → 원가차이 → 원인 파악 → 개선 및 다음 계획 반영")
