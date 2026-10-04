@@ -196,7 +196,7 @@ with tabs[0]:
         - 2026 상반기 R&D/제조 인프라 개선 235억원을 L HOUSE 제조원가로 해석하지 않습니다.
         - 백신 포트폴리오 확장 333억원은 **투자금액**이며 연구과제 실제 제조비가 아닙니다.
         - 333억원을 개별 파이프라인의 제조비로 임의 배분하지 않습니다.
-        - 4번 탭의 원가차이 분석값은 사용자 입력값이며 SK바이오사이언스 실제 수치가 아닙니다.
+        - 5번 탭의 원가차이 분석값은 사용자 입력값이며 SK바이오사이언스 실제 수치가 아닙니다.
         """
     )
 
@@ -266,19 +266,20 @@ with tabs[2]:
         "L HOUSE의 계획값과 실제값을 같은 기준으로 입력·비교하고, 계획 대비 실적 차이를 자동 계산합니다.",
         "Management Accounting의 핵심은 실제 실적을 확인하는 데 그치지 않고 계획과 얼마나 차이가 발생했는지 파악하는 것이기 때문입니다.",
         "계획값을 입력하면 공개된 실제값과 자동 비교하고, 공개되지 않은 실제값도 추후 확인할 경우 직접 입력하여 차이와 증감률을 계산할 수 있습니다.",
-        "생산능력·생산실적·가동률은 공개된 2026 상반기 실제값을 고정해 사용하고, 공개되지 않은 계획값은 사용자 입력을 받습니다. 총 제조원가·단위당 제조원가는 계획과 실제 모두 입력할 수 있도록 구성합니다.",
-        "입력 전에는 '미입력'으로 표시하며 공개되지 않은 숫자를 임의로 채우지 않습니다. 사용자가 입력한 값은 사내자료 등 추가 확인을 통해 확보한 값이라는 전제에서 분석합니다.",
+        "계획·실제 생산능력, 생산실적, 총 제조원가를 입력하면 가동률과 단위당 제조원가를 자동 계산하고 계획 대비 실제 차이를 비교합니다.",
+        "입력 전에는 '미입력' 또는 '계산 대기'로 표시하며 공개되지 않은 숫자를 임의로 채우지 않습니다. 사용자 입력값을 바탕으로 파생지표만 자동 계산합니다.",
     )
 
-    section("L HOUSE 계획값 입력")
+    section("L HOUSE 계획·실제값 입력")
     st.info(
-        "공개자료에서 확인되지 않았던 값은 빈칸으로 두었습니다. "
-        "추후 계획값이나 실제 제조원가를 알게 되면 직접 입력하세요. "
-        "입력 즉시 아래 표에서 계획 대비 실제 차이와 증감률이 자동 계산됩니다."
+        "계획과 실제의 생산능력·생산실적·총 제조원가만 입력하면 "
+        "가동률과 단위당 제조원가는 자동으로 계산됩니다."
     )
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
+
     with c1:
+        st.markdown("#### 계획값")
         plan_capacity = parse_optional_number(
             "계획 생산능력 (batch)",
             key="plan_capacity",
@@ -287,14 +288,7 @@ with tabs[2]:
         plan_output = parse_optional_number(
             "계획 생산실적 (batch)",
             key="plan_output",
-            placeholder="예: 150"
-        )
-
-    with c2:
-        plan_utilization = parse_optional_number(
-            "계획 가동률 (%)",
-            key="plan_utilization",
-            placeholder="예: 45.0"
+            placeholder="예: 200"
         )
         plan_total_cost = parse_optional_number(
             "계획 총 제조원가 (억원)",
@@ -302,27 +296,76 @@ with tabs[2]:
             placeholder="예: 500"
         )
 
-    with c3:
+    with c2:
+        st.markdown("#### 실제값")
+        actual_capacity = parse_optional_number(
+            "실제 생산능력 (batch)",
+            key="actual_capacity",
+            placeholder="예: 320"
+        )
+        actual_output = parse_optional_number(
+            "실제 생산실적 (batch)",
+            key="actual_output",
+            placeholder="예: 137"
+        )
         actual_total_cost = parse_optional_number(
             "실제 총 제조원가 (억원)",
             key="actual_total_cost",
-            placeholder="확인 후 입력"
-        )
-        plan_unit_cost = parse_optional_number(
-            "계획 단위당 제조원가 (원/batch)",
-            key="plan_unit_cost",
-            placeholder="확인 후 입력"
-        )
-        actual_unit_cost = parse_optional_number(
-            "실제 단위당 제조원가 (원/batch)",
-            key="actual_unit_cost",
-            placeholder="확인 후 입력"
+            placeholder="예: 520"
         )
 
-    # 공개자료에서 확인되는 2026 상반기 실제값
-    actual_capacity = 320.0
-    actual_output = 137.0
-    actual_utilization = 42.8
+    # 자동 계산
+    plan_utilization = (
+        plan_output / plan_capacity * 100
+        if plan_capacity is not None and plan_capacity > 0 and plan_output is not None
+        else None
+    )
+    actual_utilization = (
+        actual_output / actual_capacity * 100
+        if actual_capacity is not None and actual_capacity > 0 and actual_output is not None
+        else None
+    )
+
+    # 총 제조원가는 억원, 단위당 제조원가는 원/batch로 환산
+    plan_unit_cost = (
+        plan_total_cost * 100_000_000 / plan_output
+        if plan_total_cost is not None and plan_output is not None and plan_output > 0
+        else None
+    )
+    actual_unit_cost = (
+        actual_total_cost * 100_000_000 / actual_output
+        if actual_total_cost is not None and actual_output is not None and actual_output > 0
+        else None
+    )
+
+    section("자동 계산 결과")
+    a1, a2 = st.columns(2)
+    with a1:
+        st.markdown("#### 계획")
+        st.metric(
+            "계획 가동률",
+            f"{plan_utilization:,.1f}%" if plan_utilization is not None else "계산 대기"
+        )
+        st.metric(
+            "계획 단위당 제조원가",
+            f"{plan_unit_cost:,.0f}원/batch" if plan_unit_cost is not None else "계산 대기"
+        )
+    with a2:
+        st.markdown("#### 실제")
+        st.metric(
+            "실제 가동률",
+            f"{actual_utilization:,.1f}%" if actual_utilization is not None else "계산 대기"
+        )
+        st.metric(
+            "실제 단위당 제조원가",
+            f"{actual_unit_cost:,.0f}원/batch" if actual_unit_cost is not None else "계산 대기"
+        )
+
+    st.caption(
+        "가동률 = 생산실적 ÷ 생산능력 × 100 / "
+        "단위당 제조원가 = 총 제조원가 ÷ 생산실적. "
+        "총 제조원가는 억원 단위 입력값을 원으로 환산해 원/batch로 표시합니다."
+    )
 
     cap_diff, cap_rate = calc_plan_actual(plan_capacity, actual_capacity, "batch")
     out_diff, out_rate = calc_plan_actual(plan_output, actual_output, "batch")
@@ -362,9 +405,9 @@ with tabs[2]:
                 format_value(plan_unit_cost, "원/batch"),
             ],
             "실제": [
-                "320 batch",
-                "137 batch",
-                "42.8%",
+                format_value(actual_capacity, "batch"),
+                format_value(actual_output, "batch"),
+                format_value(actual_utilization, "%"),
                 format_value(actual_total_cost, "억원"),
                 format_value(actual_unit_cost, "원/batch"),
             ],
@@ -383,11 +426,11 @@ with tabs[2]:
                 unit_cost_rate,
             ],
             "값의 성격": [
-                "실제값: 공개자료",
-                "실제값: 공개자료",
-                "실제값: 공개자료",
-                "계획·실제: 사용자 입력",
-                "계획·실제: 사용자 입력",
+                "사용자 입력",
+                "사용자 입력",
+                "자동 계산",
+                "사용자 입력",
+                "자동 계산",
             ],
         }
     )
@@ -396,17 +439,17 @@ with tabs[2]:
 
     st.caption(
         "가동률 차이는 %p로 표시합니다. 증감률은 (실제 - 계획) ÷ 계획 × 100으로 계산합니다. "
-        "총 제조원가와 단위당 제조원가는 입력 전까지 계산하지 않습니다."
+        "가동률과 단위당 제조원가는 입력한 생산능력·생산실적·총 제조원가를 바탕으로 자동 계산됩니다."
     )
 
     section("차이 해석")
     available_diffs = []
 
-    if plan_capacity is not None:
+    if plan_capacity is not None and actual_capacity is not None:
         available_diffs.append(("생산능력", actual_capacity - plan_capacity, "batch"))
-    if plan_output is not None:
+    if plan_output is not None and actual_output is not None:
         available_diffs.append(("생산실적", actual_output - plan_output, "batch"))
-    if plan_utilization is not None:
+    if plan_utilization is not None and actual_utilization is not None:
         available_diffs.append(("가동률", actual_utilization - plan_utilization, "%p"))
     if plan_total_cost is not None and actual_total_cost is not None:
         available_diffs.append(("총 제조원가", actual_total_cost - plan_total_cost, "억원"))
@@ -414,15 +457,15 @@ with tabs[2]:
         available_diffs.append(("단위당 제조원가", actual_unit_cost - plan_unit_cost, "원/batch"))
 
     if not available_diffs:
-        st.info("계획값 또는 추가 실제값을 입력하면 차이 해석이 자동으로 표시됩니다.")
+        st.info("계획값과 실제값을 입력하면 차이 해석이 자동으로 표시됩니다.")
     else:
         for item, diff, unit in available_diffs:
             if abs(diff) < 1e-12:
-                st.write(f"- **{item}**: 계획과 실제가 동일합니다.")
+                st.write(f"- {item}: 계획과 실제가 동일합니다.")
             elif diff > 0:
-                st.write(f"- **{item}**: 실제가 계획보다 {abs(diff):,.2f}{unit} 높습니다.")
+                st.write(f"- {item}: 실제가 계획보다 {abs(diff):,.2f}{unit} 높습니다.")
             else:
-                st.write(f"- **{item}**: 실제가 계획보다 {abs(diff):,.2f}{unit} 낮습니다.")
+                st.write(f"- {item}: 실제가 계획보다 {abs(diff):,.2f}{unit} 낮습니다.")
 
     st.caption(
         "차이의 크기만으로 유리·불리를 단정하지 않습니다. 생산능력·생산실적·가동률의 증가는 원가 감소를 의미하지 않으며, "
