@@ -50,10 +50,44 @@ production = pd.DataFrame(
 )
 
 
-future_investment = pd.DataFrame(
+investment_2024 = pd.DataFrame(
     {
-        "투자항목": ["백신 포트폴리오 확장", "R&D/제조 인프라 개선", "SKYShield", "팬데믹 대응", "New Bio"],
+        "투자항목": ["백신 포트폴리오 확장", "인프라 투자", "추가 사업 확장"],
+        "2024 투자금액(억원)": [998, 192, 226],
+    }
+)
+
+investment_2025 = pd.DataFrame(
+    {
+        "투자항목": [
+            "백신 포트폴리오 확장",
+            "R&D/제조 Infra Upgrade",
+            "SKYShield 실행",
+            "Next Pandemic Preparedness",
+            "New Bio 사업 확장",
+        ],
+        "2025 투자금액(억원)": [806, 390, 37, 13, 45],
+    }
+)
+
+investment_2026_h1 = pd.DataFrame(
+    {
+        "투자항목": [
+            "백신 포트폴리오 확장",
+            "R&D/제조 Infra Upgrade",
+            "SKYShield 실행",
+            "Next Pandemic Preparedness",
+            "New Bio 사업 확장",
+        ],
         "2026 상반기 투자금액(억원)": [333, 235, 19, 8, 14],
+    }
+)
+
+investment_trend = pd.DataFrame(
+    {
+        "기간": ["2023", "2024", "2025", "2026 상반기"],
+        "백신 포트폴리오 확장": [None, 998, 806, 333],
+        "R&D/제조 인프라": [None, 192, 390, 235],
     }
 )
 
@@ -187,7 +221,7 @@ with tabs[0]:
 
     section("데이터 원칙")
     st.warning(
-        "공개되지 않은 숫자는 임의로 추정하지 않습니다. L HOUSE 총 제조원가, 단위당 제조원가, "
+        "공개되지 않은 숫자는 임의로 추정하지 않습니다. L HOUSE 총 제조원가, Batch당 제조원가, "
         "연구과제별 제조비, 계획원가는 공개자료에서 확인되지 않으면 N/A로 표시합니다."
     )
     st.markdown(
@@ -266,14 +300,14 @@ with tabs[2]:
         "L HOUSE의 계획값과 실제값을 같은 기준으로 입력·비교하고, 계획 대비 실적 차이를 자동 계산합니다.",
         "Management Accounting의 핵심은 실제 실적을 확인하는 데 그치지 않고 계획과 얼마나 차이가 발생했는지 파악하는 것이기 때문입니다.",
         "계획값을 입력하면 공개된 실제값과 자동 비교하고, 공개되지 않은 실제값도 추후 확인할 경우 직접 입력하여 차이와 증감률을 계산할 수 있습니다.",
-        "계획·실제 생산능력, 생산실적, 총 제조원가를 입력하면 가동률과 단위당 제조원가를 자동 계산하고 계획 대비 실제 차이를 비교합니다.",
+        "계획·실제 생산능력, 생산실적, 총 제조원가를 입력하면 가동률과 Batch당 제조원가를 자동 계산하고 계획 대비 실제 차이를 비교합니다.",
         "입력 전에는 '미입력' 또는 '계산 대기'로 표시하며 공개되지 않은 숫자를 임의로 채우지 않습니다. 사용자 입력값을 바탕으로 파생지표만 자동 계산합니다.",
     )
 
     section("L HOUSE 계획·실제값 입력")
     st.info(
         "계획과 실제의 생산능력·생산실적·총 제조원가만 입력하면 "
-        "가동률과 단위당 제조원가는 자동으로 계산됩니다."
+        "가동률과 Batch당 제조원가는 자동으로 계산됩니다."
     )
 
     c1, c2 = st.columns(2)
@@ -326,14 +360,14 @@ with tabs[2]:
         else None
     )
 
-    # 총 제조원가는 억원, 단위당 제조원가는 원/batch로 환산
+    # 총 제조원가는 억원, Batch당 제조원가는 억원/Batch로 계산
     plan_unit_cost = (
-        plan_total_cost * 100_000_000 / plan_output
+        plan_total_cost / plan_output
         if plan_total_cost is not None and plan_output is not None and plan_output > 0
         else None
     )
     actual_unit_cost = (
-        actual_total_cost * 100_000_000 / actual_output
+        actual_total_cost / actual_output
         if actual_total_cost is not None and actual_output is not None and actual_output > 0
         else None
     )
@@ -347,8 +381,8 @@ with tabs[2]:
             f"{plan_utilization:,.1f}%" if plan_utilization is not None else "계산 대기"
         )
         st.metric(
-            "계획 단위당 제조원가",
-            f"{plan_unit_cost:,.0f}원/batch" if plan_unit_cost is not None else "계산 대기"
+            "계획 Batch당 제조원가",
+            f"{plan_unit_cost:,.2f}억원/Batch" if plan_unit_cost is not None else "계산 대기"
         )
     with a2:
         st.markdown("#### 실제")
@@ -357,14 +391,14 @@ with tabs[2]:
             f"{actual_utilization:,.1f}%" if actual_utilization is not None else "계산 대기"
         )
         st.metric(
-            "실제 단위당 제조원가",
-            f"{actual_unit_cost:,.0f}원/batch" if actual_unit_cost is not None else "계산 대기"
+            "실제 Batch당 제조원가",
+            f"{actual_unit_cost:,.2f}억원/Batch" if actual_unit_cost is not None else "계산 대기"
         )
 
     st.caption(
         "가동률 = 생산실적 ÷ 생산능력 × 100 / "
-        "단위당 제조원가 = 총 제조원가 ÷ 생산실적. "
-        "총 제조원가는 억원 단위 입력값을 원으로 환산해 원/batch로 표시합니다."
+        "Batch당 제조원가 = 총 제조원가 ÷ 생산실적. "
+        "총 제조원가를 생산실적(Batch)로 나누어 억원/Batch로 표시합니다."
     )
 
     cap_diff, cap_rate = calc_plan_actual(plan_capacity, actual_capacity, "batch")
@@ -383,7 +417,7 @@ with tabs[2]:
     unit_cost_diff, unit_cost_rate = calc_plan_actual(
         plan_unit_cost,
         actual_unit_cost,
-        "원/batch"
+        "억원/Batch"
     )
 
     section("계획 대비 실제 자동 비교")
@@ -395,21 +429,21 @@ with tabs[2]:
                 "생산실적",
                 "가동률",
                 "총 제조원가",
-                "단위당 제조원가",
+                "Batch당 제조원가",
             ],
             "계획": [
                 format_value(plan_capacity, "batch"),
                 format_value(plan_output, "batch"),
                 format_value(plan_utilization, "%"),
                 format_value(plan_total_cost, "억원"),
-                format_value(plan_unit_cost, "원/batch"),
+                format_value(plan_unit_cost, "억원/Batch"),
             ],
             "실제": [
                 format_value(actual_capacity, "batch"),
                 format_value(actual_output, "batch"),
                 format_value(actual_utilization, "%"),
                 format_value(actual_total_cost, "억원"),
-                format_value(actual_unit_cost, "원/batch"),
+                format_value(actual_unit_cost, "억원/Batch"),
             ],
             "차이(실제-계획)": [
                 cap_diff,
@@ -439,7 +473,7 @@ with tabs[2]:
 
     st.caption(
         "가동률 차이는 %p로 표시합니다. 증감률은 (실제 - 계획) ÷ 계획 × 100으로 계산합니다. "
-        "가동률과 단위당 제조원가는 입력한 생산능력·생산실적·총 제조원가를 바탕으로 자동 계산됩니다."
+        "가동률과 Batch당 제조원가는 입력한 생산능력·생산실적·총 제조원가를 바탕으로 자동 계산됩니다."
     )
 
     section("차이 해석")
@@ -454,7 +488,7 @@ with tabs[2]:
     if plan_total_cost is not None and actual_total_cost is not None:
         available_diffs.append(("총 제조원가", actual_total_cost - plan_total_cost, "억원"))
     if plan_unit_cost is not None and actual_unit_cost is not None:
-        available_diffs.append(("단위당 제조원가", actual_unit_cost - plan_unit_cost, "원/batch"))
+        available_diffs.append(("Batch당 제조원가", actual_unit_cost - plan_unit_cost, "억원/Batch"))
 
     if not available_diffs:
         st.info("계획값과 실제값을 입력하면 차이 해석이 자동으로 표시됩니다.")
@@ -469,7 +503,7 @@ with tabs[2]:
 
     st.caption(
         "차이의 크기만으로 유리·불리를 단정하지 않습니다. 생산능력·생산실적·가동률의 증가는 원가 감소를 의미하지 않으며, "
-        "총 제조원가·단위당 제조원가의 차이가 확인되면 5번 '원가차이 분석' 탭에서 세부 원가요소별 원인을 분석합니다."
+        "총 제조원가·Batch당 제조원가의 차이가 확인되면 5번 '원가차이 분석' 탭에서 세부 원가요소별 원인을 분석합니다."
     )
 
     section("내부 데이터가 있을 경우의 분석 흐름")
@@ -493,64 +527,195 @@ with tabs[3]:
         "SK바이오사이언스의 공개자료에서 확인되는 연구개발 및 미래성장 투자현황을 정리합니다.",
         "회사가 어떤 백신 파이프라인과 연구개발 인프라에 자원을 투입하고 있는지 파악하기 위한 영역입니다.",
         "Management Accounting 관점에서는 투자 방향을 이해하되, 투자금액과 제조원가를 구분하는 것이 중요합니다.",
-        "2026 상반기 미래성장 투자항목과 2Q26 연구비/R&D 비용을 공개자료 기준으로 구분해 제시합니다.",
-        "333억원·235억원 등의 투자금액은 L HOUSE 제조원가 또는 개별 연구과제 제조비가 아니며, 공개되지 않은 세부 금액을 임의 배분하지 않습니다.",
+        "2023~2026 상반기 공개자료를 연도별로 구분하고, 백신 포트폴리오 확장과 R&D/제조 인프라 투자 추이를 비교합니다. 2Q26 연구비/R&D 비용은 별도로 제시합니다.",
+        "투자항목의 명칭과 범위는 연도별로 달라질 수 있으며, 투자금액은 L HOUSE 제조원가 또는 개별 연구과제 제조비와 동일한 개념이 아닙니다. 공개되지 않은 2023년 비교금액은 임의 추정하지 않습니다.",
     )
 
-    # A. 공개 투자현황
-    section("공개자료로 확인 가능한 R&D/미래성장 투자 현황")
-    st.dataframe(future_investment, use_container_width=True, hide_index=True)
+    # A. 연도별 공개 투자현황
+    section("연도별 R&D/미래성장 투자 현황")
+
     st.info(
-        "2026 상반기 미래성장 투자금액 합계는 609억원입니다. "
-        "이는 회사의 투자현황이며 L HOUSE 제조원가 또는 연구과제 실제 제조비와 동일한 개념이 아닙니다."
+        "연도별 공개자료를 선택해 미래성장 투자현황을 확인할 수 있습니다. "
+        "2023년 자료에서는 이후 연도와 동일한 투자항목별 금액 구분을 확인하지 못해 금액을 임의로 추정하지 않았습니다."
     )
 
-    with st.expander("백신 포트폴리오 확장 · 333억원"):
+    year_tabs = st.tabs(
+        ["2023 현황 확인하기", "2024 현황 확인하기", "2025 현황 확인하기", "2026 상반기 현황 확인하기"]
+    )
+
+    with year_tabs[0]:
+        st.markdown("#### 2023년 현황")
+        st.warning(
+            "2023년 공개자료에서는 R&D/Infra Upgrade, Vaccine Portfolio 등 성장전략의 방향은 확인되지만, "
+            "2024년 이후와 같은 방식의 '백신 포트폴리오 확장' 및 '인프라 투자' 항목별 연간 투자금액은 확인되지 않았습니다."
+        )
         st.markdown(
             """
-            **주요 추진내용**
-            - PCV21(GBP410): Sanofi 공동개발, 글로벌 임상 3상 및 상업화 준비
-            - 범용 코로나 백신: 글로벌 임상 1/2상
-            - 주사형 로타바이러스 백신: 미국 CDC 기술도입 및 공정개발
-            - RSV 예방항체: Gates MRI 관련 개발
-            - 차세대 에볼라 백신: CEPI 지원 글로벌 협력
-            - 차세대 독감 백신: IDT·Vaxxas 등과 협력
+            주요 공개 내용
+            - 송도 글로벌 R&PD 센터 착공
+            - 안동 공장 증설 결정(PCV21 생산)
+            - 글로벌 공급을 위한 안동 공장 증축 및 cGMP 인증 Process 진입
+            - PCV21 글로벌 임상 3상 추진
+            - R&D/Infra Upgrade, Vaccine Portfolio 등 5 Pillars 성장전략 제시
 
-            **해석**
-            - 333억원은 백신 포트폴리오 확장 관련 **2026 상반기 투자금액**입니다.
-            - 연구과제 실제 제조비로 사용하지 않습니다.
-
-            **공개자료 한계**
-            - 개별 파이프라인별 투자금액과 제조비는 공개되지 않았습니다.
-            - 333억원을 각 백신에 임의 배분하지 않습니다.
+            데이터 처리 원칙
+            - 2023년은 이후 연도와 동일 기준의 항목별 투자금액이 확인되지 않아 '미공개'로 처리합니다.
+            - 다른 비용 항목을 가져와 백신 포트폴리오 투자 또는 인프라 투자로 임의 환산하지 않습니다.
             """
         )
 
-    with st.expander("R&D/제조 인프라 개선 · 235억원"):
-        st.markdown(
-            """
-            **주요 추진내용**
-            - 글로벌 R&PD 센터
-            - L HOUSE 생산시설 확장/고도화
-            - AI 기반 수율 개선
-            - cGMP 수준의 제조역량 고도화 등
+    with year_tabs[1]:
+        st.markdown("#### 2024년 미래성장 투자 현황")
+        st.dataframe(investment_2024, use_container_width=True, hide_index=True)
+        st.info(
+            "2024년 미래성장 투자 합계는 1,416억원입니다. "
+            "백신 포트폴리오 확장 998억원, 인프라 투자 192억원, 추가 사업 확장 226억원으로 공개되었습니다."
+        )
+        with st.expander("백신 포트폴리오 확장 · 998억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - PCV21 / NextGen PCV 개발 및 상업화 준비
+                - mRNA 플랫폼 및 파이프라인 개발
+                - 차별화 플루, HPV9+ 등 신규 백신 발굴
+                """
+            )
+        with st.expander("인프라 투자 · 192억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - 송도 R&PD 센터 건설 및 cGMP 시설 Upgrade
+                - AI 활용 수율 개선 등
+                """
+            )
+        with st.expander("추가 사업 확장 · 226억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - IDT 인수 및 PMI를 통한 CGT 사업 확장 검토
+                - 태국 JV 설립 추진 등
+                """
+            )
 
-            **해석**
-            - 235억원은 R&D/제조 인프라 개선 관련 2026 상반기 투자금액입니다.
+    with year_tabs[2]:
+        st.markdown("#### 2025년 미래성장 투자 현황")
+        st.dataframe(investment_2025, use_container_width=True, hide_index=True)
+        st.info(
+            "2025년 미래성장 투자 합계는 1,291억원입니다. "
+            "백신 포트폴리오 확장 806억원과 R&D/제조 Infra Upgrade 390억원이 주요 투자항목입니다."
+        )
+        with st.expander("백신 포트폴리오 확장 · 806억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - PCV21 글로벌 임상 3상 본격화
+                - 차세대 백신 파이프라인 확대
+                - PCV21 상업화 준비
+                """
+            )
+        with st.expander("R&D/제조 Infra Upgrade · 390억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - 송도 글로벌 R&PD 센터 구축
+                - 안동 L HOUSE G2+ 구축 및 PCV21 글로벌 상업생산 기반 확보
+                - 연구·공정개발·품질 분석과 상업생산 인프라 고도화
+                """
+            )
+        with st.expander("기타 미래성장 투자 · 95억원"):
+            st.markdown(
+                """
+                - SKYShield 실행: 37억원
+                - Next Pandemic Preparedness: 13억원
+                - New Bio 사업 확장: 45억원
+                """
+            )
 
-            **공개자료 한계**
-            - 235억원을 L HOUSE 제조원가 또는 특정 연구과제 제조비로 해석하지 않습니다.
-            """
+    with year_tabs[3]:
+        st.markdown("#### 2026년 상반기 미래성장 투자 현황")
+        st.dataframe(investment_2026_h1, use_container_width=True, hide_index=True)
+        st.info(
+            "2026년 상반기 미래성장 투자 합계는 609억원입니다. "
+            "백신 포트폴리오 확장 333억원, R&D/제조 Infra Upgrade 235억원이 주요 투자항목입니다."
         )
 
-    with st.expander("SKYShield · 19억원"):
-        st.markdown("공개자료에서 확인되는 2026 상반기 미래성장 투자 항목입니다. 세부 제조비는 공개자료 미확인입니다.")
+        with st.expander("백신 포트폴리오 확장 · 333억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - PCV21 / NextGen PCV 개발
+                - RSV 예방항체, 차세대 독감백신, 로타바이러스 백신 등 차기 파이프라인 확대
+                - 글로벌 임상 및 상업화 준비
+                """
+            )
 
-    with st.expander("팬데믹 대응 · 8억원"):
-        st.markdown("공개자료에서 확인되는 2026 상반기 미래성장 투자 항목입니다. 세부 제조비는 공개자료 미확인입니다.")
+        with st.expander("R&D/제조 Infra Upgrade · 235억원"):
+            st.markdown(
+                """
+                주요 추진내용
+                - 글로벌 R&PD 센터
+                - L HOUSE 생산시설 고도화
+                - 생산수율 개선
+                - cGMP 수준의 제조역량 고도화
+                """
+            )
 
-    with st.expander("New Bio · 14억원"):
-        st.markdown("공개자료에서 확인되는 2026 상반기 미래성장 투자 항목입니다. 세부 제조비는 공개자료 미확인입니다.")
+        with st.expander("기타 미래성장 투자 · 41억원"):
+            st.markdown(
+                """
+                - SKYShield 실행: 19억원
+                - Next Pandemic Preparedness: 8억원
+                - New Bio 사업 확장: 14억원
+                """
+            )
+
+    section("주요 미래성장 투자 추이 | 2023~2026 상반기")
+
+    trend_long = investment_trend.melt(
+        id_vars="기간",
+        var_name="투자항목",
+        value_name="투자금액(억원)"
+    )
+
+    fig_investment_trend = px.bar(
+        trend_long,
+        x="기간",
+        y="투자금액(억원)",
+        color="투자항목",
+        barmode="group",
+        text="투자금액(억원)",
+        title="백신 포트폴리오 확장 및 R&D/제조 인프라 투자 추이",
+    )
+    fig_investment_trend.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+    fig_investment_trend.update_layout(
+        xaxis_title="기간",
+        yaxis_title="투자금액(억원)",
+        legend_title="투자항목",
+        margin=dict(t=70, b=40),
+    )
+    st.plotly_chart(fig_investment_trend, use_container_width=True)
+
+    st.caption(
+        "※ 2023년은 이후 연도와 동일한 분류의 항목별 투자금액이 공개자료에서 확인되지 않아 그래프에서 금액을 표시하지 않았습니다. "
+        "2024년의 '인프라 투자' 192억원을 2025년 이후의 'R&D/제조 Infra Upgrade'와 연결해 추이를 확인하되, 명칭과 세부 범위가 완전히 동일하다고 단정하지 않습니다. "
+        "또한 2024·2025년은 연간 금액, 2026년은 상반기 누적 금액이므로 단순 증감률 비교에는 주의가 필요합니다."
+    )
+
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.markdown(
+            """
+            그래프에서 확인할 점
+            - 백신 포트폴리오 확장: 2024년 998억원 → 2025년 806억원 → 2026년 상반기 333억원
+            - 인프라/R&D·제조 Infra: 2024년 192억원 → 2025년 390억원 → 2026년 상반기 235억원
+            - 2026년은 상반기 누적치이므로 2024·2025 연간 금액과 직접적인 연간 증감률 비교는 하지 않습니다.
+            """
+        )
+    with c2:
+        st.info(
+            "관리회계 관점에서는 투자금액 자체를 제조원가로 해석하지 않고, "
+            "회사가 어떤 영역에 자원을 배분하고 있는지 파악하는 경영정보로 활용합니다."
+        )
 
     section("연구비/R&D 비용 | 2Q26")
     st.dataframe(rd_2q26, use_container_width=True, hide_index=True)
